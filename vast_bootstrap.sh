@@ -119,52 +119,56 @@ log "stack imports ready; proceeding to model download"
 if [[ "${VIGE_SKIP_MODELS:-0}" == "1" ]]; then
     log "VIGE_SKIP_MODELS=1 — skipping all model downloads"
 else
-    if [[ -x /opt/worker/download_models.sh ]]; then
-        log "fetching NVFP4 quantized weights (~17 GB)"
-        /opt/worker/download_models.sh 2>&1 | sed 's/^/[vige-bootstrap] /' \
-            || log "WARN: NVFP4 download had errors; daemon may fail"
-    else
-        log "WARN: /opt/worker/download_models.sh missing — NVFP4 weights not fetched"
-    fi
+    # Use python + huggingface_hub directly. Vast's pytorch image ships
+    # huggingface_hub>=1.x where `huggingface-cli` is deprecated in
+    # favor of `hf`; using the Python API avoids the CLI rename and any
+    # future renames. snapshot_download with allow_patterns is robust,
+    # resumable, and parallel.
+    log "fetching NVFP4 quantized weights (~17 GB) from lightx2v/Wan2.2-NVFP4-Sparse"
+    /app/miniconda/bin/python - <<'PY' 2>&1 | sed 's/^/[vige-bootstrap] /' || log "WARN: NVFP4 download had errors"
+import os
+from huggingface_hub import snapshot_download
+os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
+snapshot_download(
+    repo_id="lightx2v/Wan2.2-NVFP4-Sparse",
+    local_dir="/workspace/models/wan22-nvfp4",
+    allow_patterns=[
+        "Wan2.2-I2V-A14B_NVFP4_Sparse_high.safetensors",
+        "Wan2.2-I2V-A14B_NVFP4_Sparse_low.safetensors",
+    ],
+    max_workers=8,
+)
+print("NVFP4 weights present")
+PY
 
     BASE_DIR=/workspace/models/Wan2.2-I2V-A14B-base
     if [[ -f "$BASE_DIR/.vige-ready" ]]; then
         log "base scaffolding already cached at $BASE_DIR"
     else
-        log "fetching base scaffolding (T5 + VAE + configs, ~14 GB)"
+        log "fetching base scaffolding (T5 + VAE + configs, ~14 GB) from Wan-AI/Wan2.2-I2V-A14B"
         mkdir -p "$BASE_DIR"
-        # Specific files only — we skip the 108 GB BF16 high/low_noise dirs.
-        for f in \
-            configuration.json \
-            models_t5_umt5-xxl-enc-bf16.pth \
-            Wan2.1_VAE.pth \
-            Wan2.2_VAE.pth \
-            taew2_2.pth \
-            lighttaew2_2.pth \
-        ; do
-            if [[ -s "$BASE_DIR/$f" ]]; then
-                log "  $f cached"
-                continue
-            fi
-            log "  downloading $f"
-            /app/miniconda/bin/huggingface-cli download \
-                Wan-AI/Wan2.2-I2V-A14B "$f" \
-                --local-dir "$BASE_DIR" \
-                --local-dir-use-symlinks False 2>&1 \
-                | sed 's/^/[vige-bootstrap] /' \
-                || log "  WARN: $f download failed"
-        done
-        # google/ subdir (tokenizer + small configs, ~21 MB)
-        if [[ ! -d "$BASE_DIR/google" ]]; then
-            log "  downloading google/ tokenizer dir"
-            /app/miniconda/bin/huggingface-cli download \
-                Wan-AI/Wan2.2-I2V-A14B \
-                --include "google/*" \
-                --local-dir "$BASE_DIR" \
-                --local-dir-use-symlinks False 2>&1 \
-                | sed 's/^/[vige-bootstrap] /' \
-                || log "  WARN: google/ download failed"
-        fi
+        /app/miniconda/bin/python - <<'PY' 2>&1 | sed 's/^/[vige-bootstrap] /' || log "WARN: base scaffolding download had errors"
+import os
+from huggingface_hub import snapshot_download
+os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
+# Pull T5 + VAE + configs but SKIP the 108 GB BF16 high/low_noise dirs
+# (we use NVFP4-quantized weights at /workspace/models/wan22-nvfp4/ instead).
+snapshot_download(
+    repo_id="Wan-AI/Wan2.2-I2V-A14B",
+    local_dir="/workspace/models/Wan2.2-I2V-A14B-base",
+    allow_patterns=[
+        "configuration.json",
+        "models_t5_umt5-xxl-enc-bf16.pth",
+        "Wan2.1_VAE.pth",
+        "Wan2.2_VAE.pth",
+        "taew2_2.pth",
+        "lighttaew2_2.pth",
+        "google/*",
+    ],
+    max_workers=8,
+)
+print("base scaffolding present")
+PY
         touch "$BASE_DIR/.vige-ready"
     fi
 fi
