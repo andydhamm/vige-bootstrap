@@ -96,8 +96,12 @@ print(f'[vige-bootstrap] torch {torch.__version__} cuda={torch.cuda.is_available
 " 2>&1 | sed 's/^/[vige-bootstrap] /' >&2 \
     || log "WARN: torch sanity check failed (continuing anyway — gpu may not be visible at bootstrap time)"
 
-touch "$SENTINEL"
-log "stack ready — sentinel: $SENTINEL"
+# NOTE: we deliberately set $SENTINEL only AFTER step 9 (model download)
+# below. Callers polling for /app/.vige-ready treat it as "READY FOR USE",
+# which means models must be on disk too. Setting the sentinel here would
+# unblock smoke/UI before models exist, leading to confusing "model not
+# found" errors downstream.
+log "stack imports ready; proceeding to model download"
 
 # --- 9. Model download (skippable for tests) -----------------------
 # Two stores to populate (idempotent per-file):
@@ -165,4 +169,6 @@ else
     fi
 fi
 
-log "DONE"
+# Sentinel: stack + models BOTH ready.
+touch "$SENTINEL"
+log "DONE — sentinel: $SENTINEL"
