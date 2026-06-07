@@ -97,4 +97,22 @@ print(f'[vige-bootstrap] torch {torch.__version__} cuda={torch.cuda.is_available
     || log "WARN: torch sanity check failed (continuing anyway — gpu may not be visible at bootstrap time)"
 
 touch "$SENTINEL"
-log "DONE — sentinel: $SENTINEL"
+log "stack ready — sentinel: $SENTINEL"
+
+# --- 9. Model download (skippable for tests) -----------------------
+# Models live on /workspace which on vast is mounted as a docker volume
+# (when --create-volume + --mount-path are passed), so this download
+# survives container destroy — only runs on first instance ever, not
+# on stop/start cycles.
+if [[ "${VIGE_SKIP_MODELS:-0}" == "1" ]]; then
+    log "VIGE_SKIP_MODELS=1 — skipping model download"
+else
+    if [[ -x /opt/worker/download_models.sh ]]; then
+        log "starting model download (~17 GB, 5-10 min on a fast pipe)"
+        /opt/worker/download_models.sh 2>&1 | sed 's/^/[vige-bootstrap] /'
+    else
+        log "WARN: /opt/worker/download_models.sh missing — models not downloaded"
+    fi
+fi
+
+log "DONE"
