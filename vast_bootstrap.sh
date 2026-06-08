@@ -18,6 +18,21 @@ set -euo pipefail
 log() { printf '[vige-bootstrap] %s\n' "$*" >&2; }
 die() { log "FATAL: $*"; exit 1; }
 
+# Some vast.ai machines ship the container with /root/.ssh/authorized_keys
+# at world-writable mode or wrong ownership, which makes sshd refuse every
+# key with "bad ownership or modes for file /root/.ssh/authorized_keys".
+# Normalize before anything else so SSH attempts during bootstrap (e.g.
+# ViGe polling for /app/.vige-ready, or our own scp later) actually
+# succeed. Wrapped in `|| true` because not all containers ship sshd /
+# the file at this point in startup.
+if [[ -f /root/.ssh/authorized_keys ]]; then
+    chown root:root /root/.ssh/authorized_keys 2>/dev/null || true
+    chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true
+    chown root:root /root/.ssh 2>/dev/null || true
+    chmod 700 /root/.ssh 2>/dev/null || true
+    log "normalized /root/.ssh ownership + modes (sshd is picky)"
+fi
+
 REPO="${VIGE_BOOTSTRAP_REPO:-andydhamm/vige-bootstrap}"
 TAG="${VIGE_APP_TAG:-app-latest}"
 PARALLEL="${VIGE_BOOTSTRAP_PARALLEL:-6}"
