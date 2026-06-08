@@ -173,6 +173,12 @@ snapshot_download(
     local_dir="/workspace/models/Wan2.2-I2V-A14B-base",
     allow_patterns=[
         "configuration.json",
+        # Per-expert configs (dim, num_heads, num_layers etc.). Lightx2v's
+        # auto_calc_config walks model_path looking for these subfolders to
+        # populate the model arch into the cfg; without them the scheduler
+        # crashes on KeyError: 'dim'. Tiny (~300 B each) so always grab.
+        "high_noise_model/config.json",
+        "low_noise_model/config.json",
         "models_t5_umt5-xxl-enc-bf16.pth",
         "Wan2.1_VAE.pth",
         "Wan2.2_VAE.pth",
